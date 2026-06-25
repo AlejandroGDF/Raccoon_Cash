@@ -32,16 +32,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import ni.edu.uam.raccooncash.data.model.AccountResponse
 import ni.edu.uam.raccooncash.data.model.CategoryResponse
 import ni.edu.uam.raccooncash.data.model.TransactionResponse
 import ni.edu.uam.raccooncash.ui.accounts.AccountChip
 import ni.edu.uam.raccooncash.ui.accounts.getEmojiForCategory
+import ni.edu.uam.raccooncash.ui.components.EmojiPickerDialog
+import ni.edu.uam.raccooncash.util.formatEditableMoney
+import ni.edu.uam.raccooncash.util.isPotentialMoneyInput
+import ni.edu.uam.raccooncash.util.parseMoneyInput
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +69,7 @@ fun AddTransactionScreen(
         else -> 0
     }
     var selectedTab by remember { mutableIntStateOf(initialTab) }
-    var amount by remember { mutableStateOf(transactionToEdit?.amount?.toString() ?: "") }
+    var amount by remember { mutableStateOf(formatEditableMoney(transactionToEdit?.amount)) }
     var title by remember { mutableStateOf(transactionToEdit?.description ?: initialDescription) }
     var notes by remember { mutableStateOf(transactionToEdit?.notes ?: "") }
     var selectedAccountId by remember { mutableStateOf<Long?>(transactionToEdit?.accountId ?: transactionToEdit?.account?.id) }
@@ -182,7 +184,7 @@ fun AddTransactionScreen(
                 Spacer(modifier = Modifier.width(8.dp))
                 TextField(
                     value = amount,
-                    onValueChange = { if (it.all { char -> char.isDigit() || char == '.' }) amount = it },
+                    onValueChange = { if (isPotentialMoneyInput(it)) amount = it },
                     placeholder = { Text("0", style = MaterialTheme.typography.headlineLarge) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     textStyle = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold, textAlign = TextAlign.End),
@@ -329,9 +331,11 @@ fun AddTransactionScreen(
                 )
             }
 
-            val isFormValid = selectedAccountId != null && 
-                             amount.isNotBlank() && 
-                             title.isNotBlank() && 
+            val amountDouble = parseMoneyInput(amount)
+            val isFormValid = selectedAccountId != null &&
+                             amountDouble != null &&
+                             amountDouble > 0.0 &&
+                             title.isNotBlank() &&
                              (if (selectedTab == 2) selectedToAccountId != null else selectedCategoryId != null)
 
             Button(
@@ -341,14 +345,13 @@ fun AddTransactionScreen(
                         1 -> "INCOME"
                         else -> "TRANSFER"
                     }
-                    val amountDouble = amount.toDoubleOrNull() ?: 0.0
                     val finalDateTime = LocalDateTime.of(selectedDate, selectedTime)
-                    
+
                     if (isFormValid) {
                         if (transactionToEdit != null) {
                             viewModel.updateTransaction(
                                 id = transactionToEdit.id,
-                                amount = amountDouble,
+                                amount = amountDouble ?: 0.0,
                                 type = type,
                                 accountId = selectedAccountId!!,
                                 toAccountId = if (type == "TRANSFER") selectedToAccountId else null,
@@ -359,7 +362,7 @@ fun AddTransactionScreen(
                             )
                         } else {
                             viewModel.createTransaction(
-                                amount = amountDouble,
+                                amount = amountDouble ?: 0.0,
                                 type = type,
                                 accountId = selectedAccountId!!,
                                 toAccountId = if (type == "TRANSFER") selectedToAccountId else null,
@@ -801,6 +804,7 @@ fun CategoryEditorDialog(
     if (showEmojiPicker) {
         EmojiPickerDialog(
             onDismiss = { showEmojiPicker = false },
+            title = "Elige un emoji para la categoría",
             onEmojiSelected = { 
                 selectedEmoji = it
                 showEmojiPicker = false
@@ -817,74 +821,6 @@ fun CategoryEditorDialog(
                 showParentPicker = false
             }
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun EmojiPickerDialog(
-    onDismiss: () -> Unit,
-    onEmojiSelected: (String) -> Unit
-) {
-    val emojis = listOf(
-        "🍴", "🥦", "🛍️", "🚕", "🍿", "🎁", "🌸", "✈️", "💼", "💊", "📚", "🏠", "💰", "💵", "🍺", "☕", "🎮", "🏋️", "🐶", "⛽",
-        "🍎", "🍔", "🍕", "🍦", "🚲", "🚗", "🚂", "🚢", "🏢", "💻", "📱", "📷", "⚽", "🏀", "🎸", "🎨", "🎬", "👗", "👞",
-        "🌈", "☀️", "🌙", "⭐", "🔥", "💧", "❄️", "🌱", "🍀", "🍓", "🍉", "🍇", "🥕", "🍦", "🍩", "🍪", "🍺", "🍷", "🍹",
-        "🚀", "🚁", "🚜", "⚓", "🏠", "🏖️", "⛰️", "🏗️", "⌚", "⏰", "📻", "📺", "🔋", "🔌", "🔨", "🔧", "🔩", "🏹", "🛡️", "🔑"
-    )
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = Color(0xFF0F111A)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Elige Un Icono", style = MaterialTheme.typography.headlineMedium, color = Color.White, modifier = Modifier.padding(bottom = 16.dp))
-            
-            Surface(
-                onClick = { /* Acción para seleccionar emoji de teclado */ },
-                color = Color(0xFF1E222D),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Face, null, tint = Color.White)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Seleccione un emoji de su elección como icono", color = Color.White, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
-                }
-            }
-
-            Surface(
-                onClick = { /* Acción para temas */ },
-                color = Color(0xFF1E222D),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
-            ) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Menu, null, tint = Color.White) // Placeholder for theme icon
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text("Cambiar el tema y el estilo de los iconos", color = Color.White, modifier = Modifier.weight(1f))
-                    Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
-                }
-            }
-
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier.heightIn(max = 400.dp),
-                contentPadding = PaddingValues(8.dp)
-            ) {
-                items(emojis) { emoji ->
-                    Box(
-                        modifier = Modifier
-                            .size(60.dp)
-                            .clickable { onEmojiSelected(emoji) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(emoji, fontSize = 32.sp)
-                    }
-                }
-            }
-        }
     }
 }
 

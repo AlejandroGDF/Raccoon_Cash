@@ -8,9 +8,6 @@ interface ApiService {
     @GET("accounts")
     suspend fun getAccounts(): List<AccountResponse>
 
-    @GET("accounts/{id}")
-    suspend fun getAccountById(@Path("id") id: Long): AccountResponse
-
     @POST("accounts")
     suspend fun createAccount(@Body request: AccountRequest): AccountResponse
 
@@ -32,6 +29,39 @@ interface ApiService {
 
     @DELETE("transactions/{id}")
     suspend fun deleteTransaction(@Path("id") id: Long): Response<Unit>
+
+    // Debts
+    @GET("debts")
+    suspend fun getDebts(
+        @Query("type") type: String? = null,
+        @Query("status") status: String? = null,
+        @Query("accountId") accountId: Long? = null,
+        @Query("dueFrom") dueFrom: String? = null,
+        @Query("dueTo") dueTo: String? = null,
+        @Query("overdue") overdue: Boolean? = null,
+        @Query("search") search: String? = null
+    ): List<DebtResponse>
+
+    @GET("debts/{id}")
+    suspend fun getDebtById(@Path("id") id: Long): DebtResponse
+
+    @POST("debts")
+    suspend fun createDebt(@Body request: DebtRequest): DebtResponse
+
+    @PUT("debts/{id}")
+    suspend fun updateDebt(@Path("id") id: Long, @Body request: DebtRequest): DebtResponse
+
+    @DELETE("debts/{id}")
+    suspend fun deleteDebt(@Path("id") id: Long): Response<Unit>
+
+    @GET("debts/{id}/payments")
+    suspend fun getDebtPayments(@Path("id") id: Long): List<DebtPaymentResponse>
+
+    @POST("debts/{id}/payments")
+    suspend fun createDebtPayment(@Path("id") id: Long, @Body request: DebtPaymentRequest): DebtPaymentResponse
+
+    @DELETE("debts/{id}/payments/{paymentId}")
+    suspend fun deleteDebtPayment(@Path("id") id: Long, @Path("paymentId") paymentId: Long): Response<Unit>
 
     // Categories
     @GET("categories")
