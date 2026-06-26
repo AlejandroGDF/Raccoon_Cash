@@ -27,11 +27,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ni.edu.uam.raccooncash.data.model.CategoryResponse
 import ni.edu.uam.raccooncash.data.model.PresupuestoRespuesta
 import ni.edu.uam.raccooncash.data.model.TipoPeriodoPresupuesto
 import ni.edu.uam.raccooncash.data.model.TransactionResponse
 import ni.edu.uam.raccooncash.ui.accounts.AccountsViewModel
 import ni.edu.uam.raccooncash.ui.accounts.TransactionItem
+import ni.edu.uam.raccooncash.ui.accounts.getEmojiForCategory
+import ni.edu.uam.raccooncash.ui.components.RaccAddFloatingActionButton
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -113,6 +116,16 @@ fun BudgetDetailsScreen(
     }
     val limitedCategoryIds = remember(categoryLimits) { categoryLimits.map { it.categoryId }.toSet() }
     val selectedCategoryId = categoryLimits.firstOrNull()?.categoryId
+    val selectedBudgetCategory = remember(categories, selectedCategoryId) {
+        selectedCategoryId?.let { findCategoryById(categories, it) }
+    }
+    val budgetCategoryIcon = remember(budget.esGasto, selectedBudgetCategory) {
+        if (budget.esGasto) {
+            getEmojiForCategory(selectedBudgetCategory?.name, selectedBudgetCategory?.icon)
+        } else {
+            "💰"
+        }
+    }
     val needsCategory = budget.esGasto && selectedCategoryId == null
     val budgetTransactions = remember(transactions, budget, startDate, endDate, limitedCategoryIds) {
         transactions
@@ -148,7 +161,7 @@ fun BudgetDetailsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            RaccAddFloatingActionButton(
                 onClick = {
                     if (needsCategory) {
                         onEditBudget(budget)
@@ -156,12 +169,8 @@ fun BudgetDetailsScreen(
                         onAddTransaction(budget, selectedCategoryId)
                     }
                 },
-                containerColor = Color(0xFFD1C4E9),
-                contentColor = Color.Black,
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Agregar transacción")
-            }
+                contentDescription = "Agregar transacción"
+            )
         }
     ) { padding ->
         LazyColumn(
@@ -178,7 +187,7 @@ fun BudgetDetailsScreen(
                         .padding(bottom = 32.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    BudgetProgressCircle(budget = budget, color = budgetColor)
+                    BudgetProgressCircle(budget = budget, color = budgetColor, categoryIcon = budgetCategoryIcon)
                 }
             }
 
@@ -190,7 +199,7 @@ fun BudgetDetailsScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "${startDate.format(DateTimeFormatter.ofPattern("d MMM", Locale("es")))} - ${endDate.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale("es")))}",
+                        text = "${startDate.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es")))} - ${endDate.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.forLanguageTag("es")))}",
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -297,7 +306,7 @@ fun BudgetDetailsScreen(
 }
 
 @Composable
-private fun BudgetProgressCircle(budget: PresupuestoRespuesta, color: Color) {
+private fun BudgetProgressCircle(budget: PresupuestoRespuesta, color: Color, categoryIcon: String) {
     val progress = if (budget.monto > 0) (budget.montoActual / budget.monto).toFloat().coerceIn(0f, 1f) else 0f
     val percentage = (progress * 100).toInt()
     val currency = budget.moneda ?: "C$"
@@ -325,7 +334,7 @@ private fun BudgetProgressCircle(budget: PresupuestoRespuesta, color: Color) {
                     .background(color),
                 contentAlignment = Alignment.Center
             ) {
-                Text(if (budget.esGasto) "P" else "A", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(categoryIcon, fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Color.White)
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
@@ -350,6 +359,17 @@ private fun BudgetProgressCircle(budget: PresupuestoRespuesta, color: Color) {
             }
         }
     }
+}
+
+private fun findCategoryById(categories: List<CategoryResponse>, categoryId: Long): CategoryResponse? {
+    for (category in categories) {
+        if (category.id == categoryId) return category
+
+        val subcategory = category.subcategories?.let { findCategoryById(it, categoryId) }
+        if (subcategory != null) return subcategory
+    }
+
+    return null
 }
 
 private fun TransactionResponse.belongsToBudget(

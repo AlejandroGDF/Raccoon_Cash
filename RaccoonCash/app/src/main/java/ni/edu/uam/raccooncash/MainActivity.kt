@@ -25,10 +25,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import ni.edu.uam.raccooncash.data.model.AccountResponse
+import ni.edu.uam.raccooncash.data.model.DebtResponse
 import ni.edu.uam.raccooncash.data.model.PresupuestoRespuesta
 import ni.edu.uam.raccooncash.data.model.TipoPeriodoPresupuesto
 import ni.edu.uam.raccooncash.data.model.TransactionResponse
 import ni.edu.uam.raccooncash.data.model.SavingGoalResponse
+import ni.edu.uam.raccooncash.data.security.PinSecurityStore
 import ni.edu.uam.raccooncash.ui.account_details.AccountDetailsScreen
 import ni.edu.uam.raccooncash.ui.accounts.AccountsScreen
 import ni.edu.uam.raccooncash.ui.accounts.AccountsViewModel
@@ -37,34 +39,67 @@ import ni.edu.uam.raccooncash.ui.budgets.AddBudgetScreen
 import ni.edu.uam.raccooncash.ui.budgets.BudgetDetailsScreen
 import ni.edu.uam.raccooncash.ui.budgets.BudgetsScreen
 import ni.edu.uam.raccooncash.ui.budgets.BudgetsViewModel
+import ni.edu.uam.raccooncash.ui.components.RaccAddFloatingActionButton
+import ni.edu.uam.raccooncash.ui.debts.AddDebtPaymentScreen
+import ni.edu.uam.raccooncash.ui.debts.AddDebtScreen
+import ni.edu.uam.raccooncash.ui.debts.DebtDetailsScreen
+import ni.edu.uam.raccooncash.ui.debts.DebtsScreen
+import ni.edu.uam.raccooncash.ui.debts.DebtsViewModel
 import ni.edu.uam.raccooncash.ui.savings.AddGoalTransactionScreen
 import ni.edu.uam.raccooncash.ui.savings.AddSavingGoalScreen
 import ni.edu.uam.raccooncash.ui.savings.SavingGoalDetailsScreen
 import ni.edu.uam.raccooncash.ui.savings.SavingsScreen
 import ni.edu.uam.raccooncash.ui.savings.SavingsViewModel
+import ni.edu.uam.raccooncash.ui.security.PinLockScreen
+import ni.edu.uam.raccooncash.ui.security.SecurityScreen
 import ni.edu.uam.raccooncash.ui.settings.SettingsScreen
 import ni.edu.uam.raccooncash.ui.theme.RaccoonCashTheme
 import ni.edu.uam.raccooncash.ui.transactions.AddTransactionScreen
+import ni.edu.uam.raccooncash.ui.transactions.TransactionFilterSheet
+import ni.edu.uam.raccooncash.ui.transactions.TransactionFilterState
+import ni.edu.uam.raccooncash.ui.transactions.TransactionSortOption
+import ni.edu.uam.raccooncash.ui.transactions.TransactionToolsMenu
 import ni.edu.uam.raccooncash.ui.transactions.TransactionsViewModel
+import ni.edu.uam.raccooncash.ui.transactions.buildTransactionGroups
+import ni.edu.uam.raccooncash.ui.transactions.matchesTransactionFilters
+import ni.edu.uam.raccooncash.ui.transactions.parseTransactionDate
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class MainActivity : ComponentActivity() {
+    private lateinit var pinSecurityStore: PinSecurityStore
+    private val isAppLocked = mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        pinSecurityStore = PinSecurityStore(this)
+        isAppLocked.value = pinSecurityStore.isPinEnabled()
+
         setContent {
-            var isDarkTheme by remember { mutableStateOf(true) }
-            RaccoonCashTheme(darkTheme = isDarkTheme) {
+            RaccoonCashTheme {
+                var isPinEnabled by remember { mutableStateOf(pinSecurityStore.isPinEnabled()) }
+
+                if (isPinEnabled && isAppLocked.value) {
+                    PinLockScreen(
+                        onValidatePin = { pin -> pinSecurityStore.verifyPin(pin) },
+                        onUnlocked = { isAppLocked.value = false }
+                    )
+                    return@RaccoonCashTheme
+                }
+
                 val accountsViewModel: AccountsViewModel = viewModel()
                 val transactionsViewModel: TransactionsViewModel = viewModel()
                 val savingsViewModel: SavingsViewModel = viewModel()
                 val budgetsViewModel: BudgetsViewModel = viewModel()
+                val debtsViewModel: DebtsViewModel = viewModel()
                 var currentScreen by remember { mutableStateOf("inicio") }
                 var editingTransaction by remember { mutableStateOf<TransactionResponse?>(null) }
                 var editingAccount by remember { mutableStateOf<AccountResponse?>(null) }
                 var selectedAccountDetails by remember { mutableStateOf<AccountResponse?>(null) }
+                var selectedDebt by remember { mutableStateOf<DebtResponse?>(null) }
+                var editingDebt by remember { mutableStateOf<DebtResponse?>(null) }
                 var selectedSavingGoal by remember { mutableStateOf<SavingGoalResponse?>(null) }
                 var editingSavingGoal by remember { mutableStateOf<SavingGoalResponse?>(null) }
                 var editingGoalTransaction by remember { mutableStateOf<TransactionResponse?>(null) }
@@ -78,27 +113,51 @@ class MainActivity : ComponentActivity() {
                 Scaffold(
                     bottomBar = {
                         NavigationBar(
-                            containerColor = Color(0xFF0F111A),
+                            containerColor = Color(0xFF080B14),
                             contentColor = Color.White
                         ) {
                             val items = listOf(
                                 Triple("inicio", "Inicio", Icons.Default.Home),
-                                Triple("transacciones", "Transacciones", Icons.AutoMirrored.Filled.List),
-                                Triple("presupuestos", "Presupuestos", Icons.Default.AccountBalanceWallet),
-                                Triple("ahorro", "Ahorro", Icons.Default.Star)
+                                Triple("transacciones", "Movs.", Icons.AutoMirrored.Filled.List),
+                                Triple("deudas", "Deudas", Icons.Default.AccountBalanceWallet),
+                                Triple("presupuestos", "Planes", Icons.Default.AccountBalanceWallet),
+                                Triple("ahorro", "Metas", Icons.Default.Star)
                             )
                             items.forEach { (screen, label, icon) ->
+                                val selected = currentScreen == screen
                                 NavigationBarItem(
-                                    selected = currentScreen == screen,
-                                    onClick = { currentScreen = screen },
-                                    icon = { Icon(icon, contentDescription = label) },
-                                    label = { Text(label) },
+                                    selected = selected,
+                                    onClick = {
+                                        currentScreen = screen
+                                        when (screen) {
+                                            "inicio", "transacciones" -> accountsViewModel.loadAccounts()
+                                            "deudas" -> debtsViewModel.loadDebts()
+                                            "presupuestos" -> budgetsViewModel.loadBudgets()
+                                            "ahorro" -> savingsViewModel.loadSavingGoals()
+                                        }
+                                    },
+                                    icon = {
+                                        Icon(
+                                            icon,
+                                            contentDescription = label,
+                                            modifier = Modifier.size(if (selected) 24.dp else 22.dp)
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    },
                                     colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = Color.White,
-                                        unselectedIconColor = Color.Gray,
+                                        selectedIconColor = Color(0xFFA78BFA),
+                                        unselectedIconColor = Color(0xFF9CA3AF),
                                         selectedTextColor = Color.White,
-                                        unselectedTextColor = Color.Gray,
-                                        indicatorColor = Color(0xFF2C313F)
+                                        unselectedTextColor = Color(0xFF9CA3AF),
+                                        indicatorColor = Color(0xFFA78BFA).copy(alpha = 0.20f)
                                     )
                                 )
                             }
@@ -129,9 +188,76 @@ class MainActivity : ComponentActivity() {
                             )
                             "transacciones" -> TransactionsTabScreen(
                                 viewModel = accountsViewModel,
+                                onAddTransactionClick = {
+                                    editingTransaction = null
+                                    currentScreen = "add_transaction"
+                                },
                                 onTransactionClick = { transaction ->
                                     editingTransaction = transaction
                                     currentScreen = "add_transaction"
+                                }
+                            )
+                            "deudas" -> DebtsScreen(
+                                viewModel = debtsViewModel,
+                                onAddDebtClick = {
+                                    editingDebt = null
+                                    currentScreen = "add_debt"
+                                },
+                                onDebtClick = { debt ->
+                                    selectedDebt = debt
+                                    debtsViewModel.loadDebtDetails(debt.id)
+                                    currentScreen = "debt_details"
+                                }
+                            )
+                            "debt_details" -> selectedDebt?.let { debt ->
+                                DebtDetailsScreen(
+                                    debtId = debt.id,
+                                    viewModel = debtsViewModel,
+                                    onEditDebt = { currentDebt ->
+                                        editingDebt = currentDebt
+                                        currentScreen = "add_debt"
+                                    },
+                                    onAddPayment = { currentDebt ->
+                                        selectedDebt = currentDebt
+                                        currentScreen = "add_debt_payment"
+                                    },
+                                    onPaymentChanged = {
+                                        accountsViewModel.loadAccounts()
+                                        debtsViewModel.loadDebts()
+                                    },
+                                    onBack = {
+                                        currentScreen = "deudas"
+                                        debtsViewModel.loadDebts()
+                                        accountsViewModel.loadAccounts()
+                                    }
+                                )
+                            }
+                            "add_debt_payment" -> selectedDebt?.let { debt ->
+                                AddDebtPaymentScreen(
+                                    debt = debt,
+                                    viewModel = debtsViewModel,
+                                    onPaymentSaved = {
+                                        accountsViewModel.loadAccounts()
+                                        debtsViewModel.loadDebtDetails(debt.id)
+                                        currentScreen = "debt_details"
+                                    },
+                                    onBack = {
+                                        currentScreen = "debt_details"
+                                        debtsViewModel.loadDebtDetails(debt.id)
+                                    }
+                                )
+                            }
+                            "add_debt" -> AddDebtScreen(
+                                viewModel = debtsViewModel,
+                                debtToEdit = editingDebt,
+                                onBack = {
+                                    currentScreen = if (editingDebt != null && selectedDebt?.id == editingDebt?.id) {
+                                        "debt_details"
+                                    } else {
+                                        "deudas"
+                                    }
+                                    debtsViewModel.loadDebts()
+                                    accountsViewModel.loadAccounts()
                                 }
                             )
                             "ahorro" -> SavingsScreen(
@@ -287,12 +413,28 @@ class MainActivity : ComponentActivity() {
                                 )
                             }
                             "settings" -> SettingsScreen(
-                                onBack = { currentScreen = "inicio" }
+                                onBack = { currentScreen = "inicio" },
+                                onSecurityClick = { currentScreen = "security" }
+                            )
+                            "security" -> SecurityScreen(
+                                pinSecurityStore = pinSecurityStore,
+                                onBack = { currentScreen = "settings" },
+                                onPinStateChanged = { enabled ->
+                                    isPinEnabled = enabled
+                                    isAppLocked.value = false
+                                }
                             )
                         }
                     }
                 }
             }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (::pinSecurityStore.isInitialized && pinSecurityStore.isPinEnabled()) {
+            isAppLocked.value = true
         }
     }
 }
@@ -324,6 +466,7 @@ private fun calculateBudgetEndDate(startDate: LocalDate, periodType: TipoPeriodo
 @Composable
 fun TransactionsTabScreen(
     viewModel: AccountsViewModel,
+    onAddTransactionClick: () -> Unit,
     onTransactionClick: (TransactionResponse) -> Unit
 ) {
     val transactions by viewModel.transactions.collectAsState()
@@ -332,23 +475,63 @@ fun TransactionsTabScreen(
     
     val months = listOf("enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre")
     var selectedMonthIndex by remember { mutableIntStateOf(java.time.LocalDate.now().monthValue - 1) }
+    var filterState by remember { mutableStateOf(TransactionFilterState()) }
+    var sortOption by remember { mutableStateOf(TransactionSortOption.DATE_DESC) }
+    var showFilterSheet by remember { mutableStateOf(false) }
 
-    val filteredTransactions = transactions.filter {
-        val date = java.time.LocalDateTime.parse(it.date, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-        date.monthValue == selectedMonthIndex + 1 && date.year == java.time.LocalDate.now().year
+    val monthTransactions = transactions.filter { transaction ->
+        val date = parseTransactionDate(transaction)
+        date?.monthValue == selectedMonthIndex + 1 && date.year == LocalDate.now().year
+    }
+
+    val filteredTransactions = monthTransactions.filter { transaction ->
+        transaction.matchesTransactionFilters(filterState, allCategories)
     }
 
     val totalIncome = filteredTransactions.filter { it.type == "INCOME" }.sumOf { it.amount }
     val totalExpense = filteredTransactions.filter { it.type == "EXPENSE" }.sumOf { it.amount }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFF0F111A))) {
-        Text(
-            "Transacciones",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(16.dp)
+    if (showFilterSheet) {
+        TransactionFilterSheet(
+            filters = filterState,
+            categories = allCategories,
+            onFiltersChange = { filterState = it },
+            onDismiss = { showFilterSheet = false }
         )
+    }
+
+    Scaffold(
+        floatingActionButton = {
+            RaccAddFloatingActionButton(
+                onClick = onAddTransactionClick,
+                contentDescription = "Nueva transacción"
+            )
+        }
+    ) { paddingValues ->
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F111A))
+            .padding(paddingValues)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Transacciones",
+                style = MaterialTheme.typography.headlineMedium,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
+            TransactionToolsMenu(
+                activeFilterCount = filterState.activeCount,
+                sortOption = sortOption,
+                onFilterClick = { showFilterSheet = true },
+                onSortSelected = { sortOption = it }
+            )
+        }
 
         ScrollableTabRow(
             selectedTabIndex = selectedMonthIndex,
@@ -392,8 +575,17 @@ fun TransactionsTabScreen(
         }
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
-            val groupedByDay = filteredTransactions.sortedByDescending { it.date }.groupBy {
-                java.time.LocalDateTime.parse(it.date, java.time.format.DateTimeFormatter.ISO_LOCAL_DATE_TIME).toLocalDate()
+            val groupedByDay = buildTransactionGroups(filteredTransactions, sortOption)
+
+            if (filteredTransactions.isEmpty()) {
+                item {
+                    Text(
+                        text = if (filterState.hasActiveFilters) "No hay transacciones con esos filtros." else "No hay transacciones en este mes.",
+                        color = Color.Gray,
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
             }
 
             groupedByDay.forEach { (date, dailyTrans) ->
@@ -408,7 +600,13 @@ fun TransactionsTabScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(dateLabel.replaceFirstChar { it.uppercase(Locale.getDefault()) }, color = Color.Gray, fontSize = 14.sp)
-                        val daySum = dailyTrans.sumOf { if (it.type == "INCOME") it.amount else -it.amount }
+                        val daySum = dailyTrans.sumOf {
+                            when (it.type) {
+                                "INCOME" -> it.amount
+                                "EXPENSE" -> -it.amount
+                                else -> 0.0
+                            }
+                        }
                         Text("C$${String.format(Locale.getDefault(), "%.2f", daySum)}", color = Color.Gray, fontSize = 14.sp)
                     }
                 }
@@ -422,5 +620,6 @@ fun TransactionsTabScreen(
                 }
             }
         }
+    }
     }
 }

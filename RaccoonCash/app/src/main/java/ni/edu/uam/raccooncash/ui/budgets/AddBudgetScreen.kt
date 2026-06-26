@@ -334,7 +334,7 @@ fun AddBudgetScreen(
                         Text("comienzo", color = Color.Gray, fontSize = 18.sp)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = fechaInicio.format(DateTimeFormatter.ofPattern("d MMM", Locale("es"))),
+                            text = fechaInicio.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es"))),
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
@@ -360,7 +360,7 @@ fun AddBudgetScreen(
                     val dailyAmount = remember(monto, days) { (monto.toDoubleOrNull() ?: 0.0) / days }
                     
                     Text(
-                        text = "Período actual: ${fechaInicio.format(DateTimeFormatter.ofPattern("d MMM", Locale("es")))} – ${endDate.format(DateTimeFormatter.ofPattern("d MMM", Locale("es")))}",
+                        text = "Período actual: ${fechaInicio.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es")))} – ${endDate.format(DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es")))}",
                         color = Color.Gray,
                         fontSize = 14.sp
                     )
@@ -419,7 +419,6 @@ fun AddBudgetScreen(
         }
     }
 }
-
 @Composable
 private fun BudgetCategorySelector(
     categories: List<CategoryResponse>,
@@ -455,7 +454,6 @@ private fun BudgetCategorySelector(
         }
     }
 }
-
 @Composable
 private fun BudgetCategoryChip(
     category: CategoryResponse,
@@ -478,39 +476,6 @@ private fun BudgetCategoryChip(
                 text = category.name,
                 color = if (isSelected) Color.White else Color.Gray,
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-            )
-        }
-    }
-}
-
-@Composable
-fun BudgetTab(
-    text: String,
-    isSelected: Boolean,
-    color: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = modifier
-            .fillMaxHeight()
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (isSelected) Color(0xFF454B57) else Color.Transparent)
-            .clickable { onClick() },
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(color, CircleShape)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = text,
-                color = if (isSelected) Color.White else Color.Gray,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
             )
         }
     }

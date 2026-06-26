@@ -25,6 +25,7 @@ data class TransactionResponse(
     val category: CategoryResponse? = null,
     
     val active: Boolean,
+    val generatedByDebtPayment: Boolean = false,
     val createdAt: String?,
     val updatedAt: String?
 )
