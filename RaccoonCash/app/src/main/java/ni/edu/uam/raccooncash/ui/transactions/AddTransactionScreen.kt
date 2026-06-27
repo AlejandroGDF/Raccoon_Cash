@@ -306,14 +306,6 @@ fun AddTransactionScreen(
                 enabled = !isLoading && isFormValid,
                 onClick = ::saveTransaction
             )
-        },
-        bottomBar = {
-            SaveTransactionBottomBar(
-                error = error,
-                isLoading = isLoading,
-                enabled = !isLoading && isFormValid,
-                onClick = ::saveTransaction
-            )
         }
     ) { padding ->
         val selectedAccount = accounts.find { it.id == selectedAccountId }
@@ -468,142 +460,136 @@ fun AddTransactionScreen(
                     fontSize = 13.sp,
                     modifier = Modifier.fillMaxWidth()
                 )
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            TransactionTypeSegmentedControl(
-                tabs = tabs,
-                selectedTab = selectedTab,
-                onTabSelected = { index ->
-                    selectedTab = index
-                    // Al cambiar de pestaña, resetear la categoría seleccionada si no es transferencia
-                    if (index != 2) {
-                        selectedCategoryId = null
+                CategorySearchField(
+                    value = categorySearchQuery,
+                    onValueChange = { categorySearchQuery = it }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 180.dp, max = 440.dp)
+                ) {
+                    if (filteredCategories.isEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            EmptyCategorySearchState(hasQuery = categorySearchQuery.isNotBlank())
+                        }
+                    }
+
+                    items(filteredCategories, key = { it.id }) { category ->
+                        val isSelected = selectedCategoryId == category.id || selectedCategoryInSheet?.parentCategoryId == category.id
+                        CategoryPickerGridCard(
+                            category = category,
+                            movementCount = movementCounts[category.id] ?: 0,
+                            isSelected = isSelected,
+                            onClick = {
+                                val subs = categories.filter { it.parentCategoryId == category.id }
+                                if (subs.isNotEmpty()) {
+                                    parentCategoryForSub = category
+                                    showSubcategorySheet = true
+                                    showCategorySheet = false
+                                } else {
+                                    selectedCategoryId = category.id
+                                    showCategorySheet = false
+                                }
+                            },
+                            onLongClick = {
+                                categoryToEdit = category
+                                showCategorySheet = false
+                            }
+                        )
+                    }
+
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        AddCategoryPickerCard(
+                            onClick = {
+                                initialParentIdForNewCategory = null
+                                showAddCategoryDialog = true
+                                showCategorySheet = false
+                            }
+                        )
                     }
                 }
-            )
+            }
+        }
+    }
 
-            AmountInputCard(
-                amount = amount,
-                currencySymbol = currencySymbol,
-                accentColor = accentColor,
-                onAmountChange = { if (isPotentialMoneyInput(it)) amount = it }
-            )
-
-            DateTimeSelectorRow(
-                dateText = dateText,
-                timeText = selectedTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                onDateClick = { datePickerDialog.show() },
-                onTimeClick = { timePickerDialog.show() }
-            )
-
-            AccountSelectorSection(
-                title = "Seleccionar cuenta",
-                accounts = accounts,
-                selectedAccountId = selectedAccountId,
-                onAccountSelected = { selectedAccountId = it }
-            )
-
-            if (selectedTab == 2) {
-                AccountSelectorSection(
-                    title = "A la cuenta",
-                    accounts = accounts.filter { it.id != selectedAccountId },
-                    selectedAccountId = selectedToAccountId,
-                    onAccountSelected = { selectedToAccountId = it }
-                )
+    if (showSubcategorySheet && parentCategoryForSub != null) {
+        SubcategoryPickerSheet(
+            parentCategory = parentCategoryForSub!!,
+            subcategories = categories.filter { it.parentCategoryId == parentCategoryForSub!!.id },
+            allCategories = categories,
+            categoryTransactions = categoryTransactions,
+            selectedCategoryId = selectedCategoryId,
+            onDismiss = { showSubcategorySheet = false },
+            onSubcategorySelected = { subcategoryId ->
+                selectedCategoryId = subcategoryId
+                showSubcategorySheet = false
+            },
+            onAddSubcategory = {
+                initialParentIdForNewCategory = parentCategoryForSub!!.id
+                showAddCategoryDialog = true
+                showSubcategorySheet = false
+            },
+            onEditParent = {
+                categoryToEdit = parentCategoryForSub
+                showSubcategorySheet = false
             }
         )
     }
 
-            PremiumTransactionTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = "Título",
-                placeholder = "Ej. Cena con amigos",
-                minLines = 1
-            )
-        }
-    }
-}
-
-            PremiumTransactionTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = "Notas",
-                placeholder = "Agrega una nota opcional…",
-                minLines = 3
-            )
-        }
-    }
-}
-
-            if (selectedTab != 2) {
-                val selectedCategory = categories.find { it.id == selectedCategoryId }
-                
-                Surface(
-                    onClick = { showCategorySheet = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Icon(
-                        imageVector = visual.icon,
-                        contentDescription = null,
-                        tint = visual.color,
-                        modifier = Modifier.size(22.dp)
-                    )
+    if (showAddCategoryDialog) {
+        CategoryEditorDialog(
+            categories = categories,
+            initialParentId = initialParentIdForNewCategory,
+            categoryTransactions = categoryTransactions,
+            onDismiss = {
+                showAddCategoryDialog = false
+                if (initialParentIdForNewCategory != null) {
+                    showSubcategorySheet = true
+                } else {
+                    showCategorySheet = true
                 }
-                Spacer(modifier = Modifier.width(10.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = account.name,
-                        color = TransactionPalette.TextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = formatTransactionAccountBalance(account),
-                        color = TransactionPalette.TextSecondary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+            },
+            onConfirm = { name, type, icon, _, parentId ->
+                viewModel.createCategory(name, type, icon, parentId)
+                showAddCategoryDialog = false
+                if (parentId != null) {
+                    parentCategoryForSub = categories.find { it.id == parentId }
+                    showSubcategorySheet = true
+                } else {
+                    showCategorySheet = true
                 }
             }
+        )
+    }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(visual.color)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = if (selected) "Seleccionada" else "Cuenta",
-                    color = if (selected) TransactionPalette.TextPrimary else TransactionPalette.TextSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(modifier = Modifier.weight(1f))
-                if (selected) {
-                    Icon(
-                        Icons.Default.Check,
-                        contentDescription = "Cuenta seleccionada",
-                        tint = visual.color,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+    if (categoryToEdit != null) {
+        CategoryEditorDialog(
+            categories = categories,
+            category = categoryToEdit,
+            categoryTransactions = categoryTransactions,
+            onDismiss = {
+                categoryToEdit = null
+                showCategorySheet = true
+            },
+            onConfirm = { name, type, icon, color, parentId ->
+                viewModel.updateCategory(categoryToEdit!!.id, name, type, icon, color, parentId)
+                categoryToEdit = null
+                showCategorySheet = true
+            },
+            onDelete = {
+                viewModel.deleteCategory(categoryToEdit!!.id)
+                categoryToEdit = null
+                showCategorySheet = true
             }
-        }
+        )
     }
 }
 
@@ -1404,189 +1390,6 @@ private fun TransactionAccountCard(
                         contentDescription = "Cuenta seleccionada",
                         tint = visual.color,
                         modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PremiumTransactionTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    minLines: Int
-) {
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(label) },
-        placeholder = { Text(placeholder) },
-        shape = RoundedCornerShape(24.dp),
-        singleLine = minLines == 1,
-        minLines = minLines,
-        maxLines = if (minLines == 1) 1 else 5,
-        textStyle = LocalTextStyle.current.copy(
-            color = TransactionPalette.TextPrimary,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        ),
-        colors = TextFieldDefaults.colors(
-            focusedTextColor = TransactionPalette.TextPrimary,
-            unfocusedTextColor = TransactionPalette.TextPrimary,
-            focusedContainerColor = TransactionPalette.ElevatedCard,
-            unfocusedContainerColor = TransactionPalette.ElevatedCard,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            cursorColor = TransactionPalette.Lavender,
-            focusedLabelColor = TransactionPalette.Lavender,
-            unfocusedLabelColor = TransactionPalette.TextSecondary,
-            focusedPlaceholderColor = TransactionPalette.TextSecondary,
-            unfocusedPlaceholderColor = TransactionPalette.TextSecondary
-        )
-    )
-}
-
-@Composable
-private fun CategorySelectorCard(
-    selectedCategory: CategoryResponse?,
-    fallbackCategoryName: String?,
-    selectedTab: Int,
-    onClick: () -> Unit
-) {
-    val categoryName = selectedCategory?.name ?: fallbackCategoryName
-    val accentColor = parseTransactionColor(selectedCategory?.color) ?: getTransactionTypeAccent(selectedTab)
-    val title = categoryName ?: "Selecciona una categoría"
-    val subtext = if (categoryName == null) {
-        if (selectedTab == 0) "Elige una categoría para tu gasto" else "Elige una categoría para tu ingreso"
-    } else {
-        if (selectedTab == 0) "Categoría de gasto" else "Categoría de ingreso"
-    }
-
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = TransactionPalette.ElevatedCard,
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.28f)),
-        tonalElevation = 3.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = getEmojiForCategory(categoryName, selectedCategory?.icon),
-                    fontSize = 24.sp
-                )
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    color = TransactionPalette.TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(
-                    text = subtext,
-                    color = TransactionPalette.TextSecondary,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Icon(
-                Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = TransactionPalette.TextSecondary,
-                modifier = Modifier.size(24.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SaveTransactionBottomBar(
-    error: String?,
-    isLoading: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = TransactionPalette.Background.copy(alpha = 0.96f),
-        tonalElevation = 8.dp
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 14.dp)
-        ) {
-            if (error != null) {
-                Text(
-                    text = error,
-                    color = TransactionPalette.Coral,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            if (enabled) {
-                                listOf(
-                                    TransactionPalette.LavenderStrong,
-                                    TransactionPalette.Lavender,
-                                    Color(0xFFC4B5FD)
-                                )
-                            } else {
-                                listOf(
-                                    TransactionPalette.ElevatedCard,
-                                    TransactionPalette.Card
-                                )
-                            }
-                        )
-                    )
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = if (enabled) 0.16f else 0.06f),
-                        shape = RoundedCornerShape(999.dp)
-                    )
-                    .clickable(enabled = enabled, onClick = onClick),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Text(
-                        text = "Guardar",
-                        color = if (enabled) TransactionPalette.TextPrimary else TransactionPalette.TextSecondary,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold
                     )
                 }
             }
