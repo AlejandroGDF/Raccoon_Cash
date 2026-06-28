@@ -77,7 +77,6 @@ import ni.edu.uam.raccooncash.util.parseMoneyInput
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 data class CategoryFilterSelection(
     val categoryId: Long,
@@ -208,10 +207,12 @@ fun TransactionToolsMenu(
 fun TransactionFilterSheet(
     filters: TransactionFilterState,
     categories: List<CategoryResponse>,
+    transactions: List<TransactionResponse>,
     onFiltersChange: (TransactionFilterState) -> Unit,
     onDismiss: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var categorySortOption by remember { mutableStateOf(CategorySortOption.ALPHABETICAL) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -308,9 +309,15 @@ fun TransactionFilterSheet(
                         color = FilterSheetPalette.TextSecondary,
                         fontSize = 12.sp
                     )
+                    CategorySortSelector(
+                        selectedOption = categorySortOption,
+                        onOptionSelected = { categorySortOption = it }
+                    )
                     CategoryFilterList(
                         categories = categories,
+                        transactions = transactions,
                         filters = filters,
+                        sortOption = categorySortOption,
                         onFiltersChange = onFiltersChange
                     )
                 }
@@ -608,12 +615,17 @@ private fun TransactionTypeChip(
 @Composable
 private fun CategoryFilterList(
     categories: List<CategoryResponse>,
+    transactions: List<TransactionResponse>,
     filters: TransactionFilterState,
+    sortOption: CategorySortOption,
     onFiltersChange: (TransactionFilterState) -> Unit
 ) {
+    val movementCounts = remember(categories, transactions) {
+        buildCategoryMovementCounts(categories, transactions)
+    }
     val rootCategories = categories
         .filter { it.parentCategoryId == null || it.parentCategoryId == 0L }
-        .sortedWith(compareBy<CategoryResponse> { it.type }.thenBy { it.name.lowercase(Locale.getDefault()) })
+        .let { sortCategoriesForDisplay(it, sortOption, movementCounts) }
 
     if (rootCategories.isEmpty()) {
         Text("No hay categorías disponibles.", color = FilterSheetPalette.TextSecondary, fontSize = 13.sp)
@@ -624,7 +636,7 @@ private fun CategoryFilterList(
     val focusedCategory = rootCategories.find { it.id == focusedCategoryId } ?: rootCategories.first()
     val focusedSubcategories = categories
         .filter { it.parentCategoryId == focusedCategory.id }
-        .sortedBy { it.name.lowercase(Locale.getDefault()) }
+        .let { sortCategoriesForDisplay(it, sortOption, movementCounts) }
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         LazyRow(
@@ -658,6 +670,27 @@ private fun CategoryFilterList(
             categories = categories,
             onFiltersChange = onFiltersChange
         )
+    }
+}
+
+@Composable
+private fun CategorySortSelector(
+    selectedOption: CategorySortOption,
+    onOptionSelected: (CategorySortOption) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CategorySortOption.entries.forEach { option ->
+            SelectableChip(
+                text = option.label,
+                selected = selectedOption == option,
+                modifier = Modifier.weight(1f),
+                accent = FilterSheetPalette.Lavender,
+                onClick = { onOptionSelected(option) }
+            )
+        }
     }
 }
 

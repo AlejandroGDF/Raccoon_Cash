@@ -88,6 +88,114 @@ class AplicacionRaccoonCashApiTests {
     }
 
     @Test
+    void deleteIncomeTransactionRestoresAccountBalance() throws Exception {
+        Long accountId = createAccount();
+        Long categoryId = createCategory("Salario", "INCOME");
+
+        MvcResult transactionResult = mockMvc.perform(post("/api/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "description": "Ingreso temporal",
+                                  "amount": 300,
+                                  "type": "INCOME",
+                                  "date": "2026-06-03T10:00:00",
+                                  "accountId": %d,
+                                  "categoryId": %d
+                                }
+                                """.formatted(accountId, categoryId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Number transactionId = JsonPath.read(transactionResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/accounts/{id}", accountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(5300));
+
+        mockMvc.perform(delete("/api/transactions/{id}", transactionId.longValue()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/accounts/{id}", accountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(5000));
+    }
+
+    @Test
+    void deleteExpenseTransactionRestoresAccountBalance() throws Exception {
+        Long accountId = createAccount();
+        Long categoryId = createCategory("Comida", "EXPENSE");
+
+        MvcResult transactionResult = mockMvc.perform(post("/api/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "description": "Gasto temporal",
+                                  "amount": 250,
+                                  "type": "EXPENSE",
+                                  "date": "2026-06-03T10:00:00",
+                                  "accountId": %d,
+                                  "categoryId": %d
+                                }
+                                """.formatted(accountId, categoryId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Number transactionId = JsonPath.read(transactionResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/accounts/{id}", accountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(4750));
+
+        mockMvc.perform(delete("/api/transactions/{id}", transactionId.longValue()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/accounts/{id}", accountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(5000));
+    }
+
+    @Test
+    void deleteTransferTransactionRestoresBothAccountBalances() throws Exception {
+        Long sourceAccountId = createAccount();
+        Long destinationAccountId = createAccount("Banco", 2000);
+
+        MvcResult transactionResult = mockMvc.perform(post("/api/transactions")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "description": "Transferencia temporal",
+                                  "amount": 750,
+                                  "type": "TRANSFER",
+                                  "date": "2026-06-03T10:00:00",
+                                  "accountId": %d,
+                                  "toAccountId": %d
+                                }
+                                """.formatted(sourceAccountId, destinationAccountId)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        Number transactionId = JsonPath.read(transactionResult.getResponse().getContentAsString(), "$.id");
+
+        mockMvc.perform(get("/api/accounts/{id}", sourceAccountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(4250));
+        mockMvc.perform(get("/api/accounts/{id}", destinationAccountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(2750));
+
+        mockMvc.perform(delete("/api/transactions/{id}", transactionId.longValue()))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/api/accounts/{id}", sourceAccountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(5000));
+        mockMvc.perform(get("/api/accounts/{id}", destinationAccountId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentBalance").value(2000));
+    }
+
+    @Test
     void createAndUpdateCategoryPersistParentCategoryId() throws Exception {
         Long parentId = createCategory("Comida", "EXPENSE");
 

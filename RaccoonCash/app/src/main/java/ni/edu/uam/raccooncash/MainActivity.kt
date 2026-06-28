@@ -535,6 +535,7 @@ fun TransactionsTabScreen(
         TransactionFilterSheet(
             filters = filterState,
             categories = allCategories,
+            transactions = transactions,
             onFiltersChange = { filterState = it },
             onDismiss = { showFilterSheet = false }
         )
